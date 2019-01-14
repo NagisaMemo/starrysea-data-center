@@ -9,11 +9,8 @@ import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,9 +21,9 @@ public abstract class Mapper implements Runnable {
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	protected String inputPath;
 	protected String outputPath;
-	private List<Reducer<?>> reducers;
+	private List<Reducer> reducers;
 	protected ReactiveMongoRepository<?, ?> repository;
-	private Function<Callable<?>, Future<?>> runReducerTask;
+	private Function<Runnable, Void> managerThreadPool;
 
 	public void setInputPath(String inputPath) {
 		this.inputPath = inputPath;
@@ -36,20 +33,21 @@ public abstract class Mapper implements Runnable {
 		this.outputPath = outputPath;
 	}
 
-	public void setReducers(List<Reducer<?>> reducers) {
+	public void setReducers(List<Reducer> reducers) {
 		this.reducers = reducers;
 	}
 
-	public List<Reducer<?>> getReducers() {
+	public List<Reducer> getReducers() {
 		return reducers;
 	}
 
-	public void setRepository(ReactiveMongoRepository<?, ?> repository) {
+	public Mapper setRepository(ReactiveMongoRepository<?, ?> repository) {
 		this.repository = repository;
+		return this;
 	}
 
-	public void setRunReducerTask(Function<Callable<?>, Future<?>> runReducerTask) {
-		this.runReducerTask = runReducerTask;
+	public void setManagerThreadPool(Function<Runnable, Void> runReducerTask) {
+		this.managerThreadPool = runReducerTask;
 	}
 
 	@Override
@@ -58,7 +56,7 @@ public abstract class Mapper implements Runnable {
 			File inputDir = new File(inputPath);
 			if (!inputDir.exists()) {
 				inputDir.mkdirs();
-				logger.info("{1} 目录已创建", inputPath);
+				logger.info("{} 目录已创建", inputPath);
 			}
 			File outputDir = new File(outputPath);
 			if (!outputDir.exists()) {
@@ -83,29 +81,17 @@ public abstract class Mapper implements Runnable {
 					logger.info("检测到文件变化: {} {}", event.context().toString(), event.kind().toString());
 					updated = false;
 					map(event);
-					CountDownLatch countDownLatch = new CountDownLatch(reducers.size());
-					List<Future<?>> futures = reducers.stream().map(reducer -> {
+					reducers.stream().forEach(reducer -> {
 						reducer.setInputPath(outputPath);
-						reducer.setCountDownLatch(countDownLatch);
-						return runReducerTask.apply(reducer);
-					}).collect(Collectors.toList());
-					waitForFinish(countDownLatch, futures);
+						reducer.setFileName(event.context().toString());
+						managerThreadPool.apply(reducer);
+					});
 				}
 				key.reset();
 			}
 		} catch (IOException e) {
 			logger.error(e.getMessage(), e);
 		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		}
-	}
-
-	private void waitForFinish(CountDownLatch countDownLatch, List<Future<?>> futures) {
-		try {
-			countDownLatch.await();
-			mapReduceFinish(futures);
-		} catch (InterruptedException e) {
-			logger.error(e.getMessage(), e);
 			Thread.currentThread().interrupt();
 		}
 	}

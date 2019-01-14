@@ -2,8 +2,6 @@ package top.starrysea.mapreduce;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.Future;
 
 import javax.annotation.PostConstruct;
 
@@ -23,21 +21,13 @@ public class StarryseaMapReduceManager implements InitializingBean {
 	private ThreadPoolTaskExecutor threadPool;
 	private List<MapperAndReduce> mapperAndReduces;
 
+	@Value("${starrysea.split.input}")
 	private String inputPath;
+	@Value("${starrysea.split.output}")
 	private String outputPath;
 
 	@Autowired
 	private MostRepository mostRepository;
-
-	@Value("${starrysea.split.input}")
-	public void setInputPath(String inputPath) {
-		this.inputPath = inputPath;
-	}
-
-	@Value("${starrysea.split.output}")
-	public void setOutputPath(String outputPath) {
-		this.outputPath = outputPath;
-	}
 
 	@PostConstruct
 	private void init() {
@@ -51,30 +41,25 @@ public class StarryseaMapReduceManager implements InitializingBean {
 
 	@Override
 	public void afterPropertiesSet() throws Exception {
-		Mapper dateMapper = new DateMapper();
-		dateMapper.setRepository(mostRepository);
-		Reducer<Integer> dateReducer = new DateReducer();
-		this.register(dateMapper, dateReducer);
-		// this.run();
+		this.register(new DateMapper(), new DateReducer().setRepository(mostRepository));
+		this.run();
 	}
 
-	private StarryseaMapReduceManager register(Mapper mapper, Reducer<?>... reducers) {
+	private StarryseaMapReduceManager register(Mapper mapper, Reducer... reducers) {
 		mapper.setInputPath(inputPath);
 		mapper.setOutputPath(outputPath);
-		mapper.setRunReducerTask(this::runCallableTask);
+		mapper.setManagerThreadPool(this::executeTask);
 		mapperAndReduces.add(MapperAndReduce.of(mapper, reducers));
 		return this;
 	}
 
 	private void run() {
-		mapperAndReduces.stream().forEach(mapperAndReduce -> {
-			Mapper mapper = mapperAndReduce.getMapper();
-			threadPool.execute(mapper);
-		});
+		mapperAndReduces.stream().forEach(mapperAndReduce -> threadPool.execute(mapperAndReduce.getMapper()));
 	}
 
-	private Future<?> runCallableTask(Callable<?> task) {
-		return threadPool.submit(task);
+	private Void executeTask(Runnable task) {
+		threadPool.execute(task);
+		return null;
 	}
 
 }

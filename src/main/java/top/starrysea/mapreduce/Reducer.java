@@ -1,19 +1,19 @@
 package top.starrysea.mapreduce;
 
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
+import java.util.function.Function;
 
-public abstract class Reducer<T> implements Callable<T> {
+import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
+
+public abstract class Reducer implements Runnable {
 
 	protected String inputPath;
-	protected String outputPath;
-	private CountDownLatch countDownLatch;
+	private String fileName;
+	protected ReactiveMongoRepository<?, ?> repository;
+	protected Function<Runnable, Void> managerThreadPool;
 
 	@Override
-	public T call() {
-		T result = reduce();
-		countDownLatch.countDown();
-		return result;
+	public final void run() {
+		reduce();
 	}
 
 	public String getInputPath() {
@@ -24,17 +24,22 @@ public abstract class Reducer<T> implements Callable<T> {
 		this.inputPath = inputPath;
 	}
 
-	public String getOutputPath() {
-		return outputPath;
+	public void setFileName(String fileName) {
+		this.fileName = fileName;
 	}
 
-	public void setOutputPath(String outputPath) {
-		this.outputPath = outputPath;
+	public String getFileName() {
+		return fileName;
 	}
 
-	public void setCountDownLatch(CountDownLatch countDownLatch) {
-		this.countDownLatch = countDownLatch;
+	public Reducer setRepository(ReactiveMongoRepository<?, ?> repository) {
+		this.repository = repository;
+		return this;
 	}
 
-	protected abstract T reduce();
+	public void setManagerThreadPool(Function<Runnable, Void> managerThreadPool) {
+		this.managerThreadPool = managerThreadPool;
+	}
+
+	protected abstract void reduce();
 }
