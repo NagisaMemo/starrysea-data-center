@@ -8,15 +8,13 @@ import top.starrysea.mapreduce.Reducer;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 public class DateReducer extends Reducer {
-	private TreeMap<String, Integer> chatCount;
+	private ConcurrentHashMap<String, Long> chatCount;
 	private ThreadPoolTaskExecutor threadPool = new ThreadPoolTaskExecutor();
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -26,7 +24,7 @@ public class DateReducer extends Reducer {
 		threadPool.setMaxPoolSize(10);
 		threadPool.setQueueCapacity(25);
 		threadPool.initialize();
-		chatCount = new TreeMap<>();
+		chatCount = new ConcurrentHashMap<>();
 		String fileNameWithoutExtension = getFileName().substring(0, getFileName().lastIndexOf("."));
 		analyze(inputPath + "/" + fileNameWithoutExtension);
 	}
@@ -50,7 +48,7 @@ public class DateReducer extends Reducer {
 		try {
 			countDownLatch.await();
 			logger.info("对每月发言数的分析结束.");
-			for (Map.Entry<String, Integer> entry : chatCount.entrySet()) {
+			for (Map.Entry<String, Long> entry : chatCount.entrySet()) {
 				logger.info(entry.getKey() + " " + entry.getValue());
 			}
 		} catch (InterruptedException e) {
@@ -75,25 +73,21 @@ public class DateReducer extends Reducer {
 			String date = dir.substring(dir.length() - 7);
 			date = date.replace("\\", "/");
 			File[] items = dirPath.listFiles();
-			AtomicInteger count = new AtomicInteger();
-			ArrayList<File> itemsArrayList = new ArrayList<>();
+			List<File> itemsArrayList = new ArrayList<>();
 			for (File f : items) {
 				if (f.isFile())
 					itemsArrayList.add(f);
 			}
-			itemsArrayList.forEach(f -> {
+			long count = itemsArrayList.stream().mapToLong(f -> {
 				try {
-					Files.lines(f.toPath()).forEach(s -> {
-						s = s.replace("\ufeff", "");
-						if (Pattern.matches(pattern, s))
-							count.getAndIncrement();
-					});
+					return Files.lines(f.toPath()).map(s -> s.replace("\ufeff", ""))
+							.filter(s -> Pattern.matches(pattern, s)).count();
 				} catch (IOException e) {
 					logger.error(e.getMessage(), e);
+					return 0;
 				}
-			});
-			chatCount.put(date, count.intValue());
-			// logger.info(date + " " + count);
+			}).sum();
+			chatCount.put(date, count);
 			countDownLatch.countDown();
 		}
 	}
