@@ -2,13 +2,10 @@ package top.starrysea.mapreduce;
 
 import java.util.function.Function;
 
-import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
-
 public abstract class Reducer implements Runnable {
 
 	protected String inputPath;
 	private String fileName;
-	protected ReactiveMongoRepository<?, ?> repository;
 	protected Function<Runnable, Void> managerThreadPool;
 
 	@Override
@@ -30,11 +27,6 @@ public abstract class Reducer implements Runnable {
 
 	public String getFileName() {
 		return fileName;
-	}
-
-	public Reducer setRepository(ReactiveMongoRepository<?, ?> repository) {
-		this.repository = repository;
-		return this;
 	}
 
 	public void setManagerThreadPool(Function<Runnable, Void> managerThreadPool) {

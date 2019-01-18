@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 
 import top.starrysea.mapper.DateMapper;
 import top.starrysea.reducer.DateReducer;
-import top.starrysea.repository.MostRepository;
+import top.starrysea.repository.CountRepository;
 
 @Component
 public class StarryseaMapReduceManager implements InitializingBean {
@@ -27,7 +27,7 @@ public class StarryseaMapReduceManager implements InitializingBean {
 	private String outputPath;
 
 	@Autowired
-	private MostRepository mostRepository;
+	private CountRepository countRepository;
 
 	@PostConstruct
 	private void init() {
@@ -41,7 +41,7 @@ public class StarryseaMapReduceManager implements InitializingBean {
 
 	@Override
 	public void afterPropertiesSet() throws Exception {
-		this.register(new DateMapper(), new DateReducer().setRepository(mostRepository));
+		this.register(new DateMapper(), new DateReducer().setCountRepository(countRepository));
 		this.run();
 	}
 

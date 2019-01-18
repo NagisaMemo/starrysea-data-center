@@ -1,9 +1,9 @@
 package top.starrysea.service;
 
 import reactor.core.publisher.Mono;
-import top.starrysea.dto.Most;
+import top.starrysea.dto.Count;
 
 public interface ISearchService {
 
-	Mono<Most> searchMostService(String keyword);
+	Mono<Count> SearchCountService(String type);
 }
