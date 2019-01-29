@@ -2,6 +2,7 @@ package top.starrysea.mapreduce;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadPoolExecutor;
 
 import javax.annotation.PostConstruct;
 
@@ -22,7 +23,8 @@ import top.starrysea.repository.CountRepository;
 @Component
 public class StarryseaMapReduceManager implements InitializingBean {
 
-	private ThreadPoolTaskExecutor threadPool;
+	private ThreadPoolTaskExecutor mapperThreadPool;
+	private ThreadPoolTaskExecutor reducerThreadPool;
 	private List<MapperAndReduce> mapperAndReduces;
 
 	@Value("${starrysea.split.input}")
@@ -36,12 +38,22 @@ public class StarryseaMapReduceManager implements InitializingBean {
 	@PostConstruct
 	private void init() {
 		mapperAndReduces = new ArrayList<>();
-		threadPool = new ThreadPoolTaskExecutor();
-		threadPool.setCorePoolSize(Runtime.getRuntime().availableProcessors());
-		// threadPool.setMaxPoolSize(10);
-		// threadPool.setQueueCapacity(25);
-		// 可能是这里的限制太低了,导致按天分析的任务无法进行,也许需要一个大一点的值
-		threadPool.initialize();
+		
+		//初始化mapper的线程池
+		mapperThreadPool = new ThreadPoolTaskExecutor();
+		mapperThreadPool.setCorePoolSize(Runtime.getRuntime().availableProcessors());
+		mapperThreadPool.setMaxPoolSize(10);
+		mapperThreadPool.setQueueCapacity(25);
+		mapperThreadPool.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+		mapperThreadPool.initialize();
+
+		//初始化reducer的线程池
+		reducerThreadPool = new ThreadPoolTaskExecutor();
+		reducerThreadPool.setCorePoolSize(Runtime.getRuntime().availableProcessors());
+		reducerThreadPool.setMaxPoolSize(10);
+		reducerThreadPool.setQueueCapacity(25);
+		reducerThreadPool.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+		reducerThreadPool.initialize();
 	}
 
 	@Override
@@ -49,24 +61,32 @@ public class StarryseaMapReduceManager implements InitializingBean {
 		this.register(new DateMapper(), new MonthReducer().setCountRepository(countRepository),
 				new DayReducer().setCountRepository(countRepository),
 				new YearReducer().setCountRepository(countRepository));
-		this.register(new IdMapper(),new IdReducer().setCountRepository(countRepository));
+		this.register(new IdMapper(), new IdReducer().setCountRepository(countRepository));
 		this.run();
 	}
 
 	private StarryseaMapReduceManager register(Mapper mapper, Reducer... reducers) {
 		mapper.setInputPath(inputPath);
 		mapper.setOutputPath(outputPath);
-		mapper.setManagerThreadPool(this::executeTask);
+		mapper.setManagerThreadPool(this::executeMapperTask);
+		for (Reducer reducer : reducers) {
+			reducer.setManagerThreadPool(this::executeReducerTask);
+		}
 		mapperAndReduces.add(MapperAndReduce.of(mapper, reducers));
 		return this;
 	}
 
 	private void run() {
-		mapperAndReduces.stream().forEach(mapperAndReduce -> threadPool.execute(mapperAndReduce.getMapper()));
+		mapperAndReduces.stream().forEach(mapperAndReduce -> mapperThreadPool.execute(mapperAndReduce.getMapper()));
 	}
 
-	private Void executeTask(Runnable task) {
-		threadPool.execute(task);
+	private Void executeMapperTask(Runnable task) {
+		mapperThreadPool.execute(task);
+		return null;
+	}
+
+	private Void executeReducerTask(Runnable task) {
+		reducerThreadPool.execute(task);
 		return null;
 	}
 
