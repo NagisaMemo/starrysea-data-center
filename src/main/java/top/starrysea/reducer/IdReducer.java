@@ -3,7 +3,7 @@ package top.starrysea.reducer;
 import top.starrysea.dto.Count;
 import top.starrysea.mapreduce.MapReduceContext;
 import top.starrysea.mapreduce.ReduceResult;
-import top.starrysea.mapreduce.Reducer;
+import top.starrysea.mapreduce.reducer.LongReducer;
 import top.starrysea.repository.CountRepository;
 
 import java.io.File;
@@ -12,19 +12,20 @@ import java.nio.file.Files;
 import java.util.Map;
 import java.util.stream.Stream;
 
-public class IdReducer extends Reducer {
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+@Component
+public class IdReducer extends LongReducer {
+
+	@Autowired
 	private CountRepository countRepository;
 
-	public Reducer setCountRepository(CountRepository countRepository) {
-		this.countRepository = countRepository;
-		return this;
-	}
-
 	@Override
-	protected ReduceResult reduce(File path) {
+	protected ReduceResult<Long> reduce(File path) {
 		long count = 0;
 		try (Stream<String> line = Files.lines(path.toPath())) {
-			count = line.map(s -> s.replace("\ufeff", "")).count();
+			count = line.count();
 		} catch (IOException e) {
 			logger.error(e.getMessage(), e);
 		}
@@ -36,14 +37,11 @@ public class IdReducer extends Reducer {
 
 	@Override
 	protected void reduceFinish(Map<String, Long> reduceResult, MapReduceContext context) {
-		logger.info("按id分析结束.");
-		logger.info("共有{}位用户发言.", reduceResult.size());
 		Count count = new Count();
 		count.setType("userId");
 		count.setResult(reduceResult);
 		countRepository.findById("userId").defaultIfEmpty(count).subscribe(chatCountTemp -> {
 			chatCountTemp.getResult().putAll(reduceResult);
-			chatCountTemp.setResult(reduceResult);
 			countRepository.save(chatCountTemp).subscribe();
 			logger.info("id分析已存入数据库.");
 		});
